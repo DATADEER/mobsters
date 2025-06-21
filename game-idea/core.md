@@ -6,7 +6,7 @@
 - if a tile has the color of one of the players in the game, the tile belongs to that player
 - your task is to kill all other mobsters on the map
 - you can gain more power, ability to move and money by by extorting or buying capturing stores on the map
-    - you can only move to tiles that are adjacent to your own
+    - most units can only move to tiles that are adjacent to your own. the mobster can move freely.
 - every store gives you money. You can use money to get more henchmen or invest in the effectivity of your existing stores.
     - You always need to weigh your options.
         - if you keep your empire small: It's easy to protect but you can't eliminate the enemy because you can't reach them. You also give your enemy more space to expand, which is generally cheaper than upgrading stores

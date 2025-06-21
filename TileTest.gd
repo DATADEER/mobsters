@@ -9,12 +9,15 @@ enum TileType { EMPTY, HQ, STORE }
 var tilemap: TileMap
 var tile_set: TileSet
 var colored_tiles: Dictionary = {}  # For player-owned tiles
+var player_mobster: Mobster
+var owned_tiles: Array[Vector2i] = []  # Tiles owned by player
 
 func _ready():
 	create_tileset()
 	create_tilemap()
 	create_tile_grid()
 	add_colored_tiles()
+	create_player_mobster()
 	center_camera_on_hq()
 
 func create_tileset():
@@ -72,10 +75,14 @@ func add_colored_tiles():
 	var center_y = GRID_HEIGHT / 2
 	
 	# Add red-tinted HQ
-	create_colored_tile(Vector2i(center_x, center_y), TileType.HQ, Color.RED)
+	var hq_pos = Vector2i(center_x, center_y)
+	create_colored_tile(hq_pos, TileType.HQ, Color.RED)
+	owned_tiles.append(hq_pos)
 	
 	# Add red-tinted store to the right of HQ
-	create_colored_tile(Vector2i(center_x + 1, center_y), TileType.STORE, Color.RED)
+	var store_pos = Vector2i(center_x + 1, center_y)
+	create_colored_tile(store_pos, TileType.STORE, Color.RED)
+	owned_tiles.append(store_pos)
 
 func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 	var sprite = Sprite2D.new()
@@ -96,6 +103,60 @@ func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 	
 	add_child(sprite)
 	colored_tiles[cell_pos] = sprite
+
+func create_player_mobster():
+	player_mobster = Mobster.new()
+	var center_x = GRID_WIDTH / 2
+	var center_y = GRID_HEIGHT / 2
+	var hq_pos = Vector2i(center_x, center_y)
+	var hq_world_pos = tilemap.map_to_local(hq_pos)
+	
+	player_mobster.tilemap_ref = tilemap
+	player_mobster.set_tile_position(hq_pos, hq_world_pos)
+	player_mobster.set_player_color(Mobster.PlayerColor.RED)
+	player_mobster.mobster_clicked.connect(_on_mobster_clicked)
+	player_mobster.movement_finished.connect(_on_mobster_movement_finished)
+	
+	add_child(player_mobster)
+
+func _unhandled_input(event):
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			handle_tile_click(event.global_position)
+
+func handle_tile_click(screen_pos: Vector2):
+	# Convert screen position to world position using camera
+	var camera = get_node("Camera2D")
+	var world_pos = screen_pos
+	if camera:
+		world_pos = camera.get_global_mouse_position()
+	
+	var tile_pos = tilemap.local_to_map(world_pos)
+	var mobster_pos = player_mobster.current_tile_pos
+	
+	print("Clicked tile: ", tile_pos)
+	print("Mobster position: ", mobster_pos)
+	print("Is adjacent: ", is_adjacent_to_mobster(tile_pos))
+	print("Is owned: ", is_tile_owned(tile_pos))
+	print("Owned tiles: ", owned_tiles)
+	
+	# Allow movement to any tile using pathfinding
+	print("Moving mobster to: ", tile_pos)
+	player_mobster.move_to_tile(tile_pos, tilemap, GRID_WIDTH, GRID_HEIGHT)
+
+func is_adjacent_to_mobster(tile_pos: Vector2i) -> bool:
+	var mobster_pos = player_mobster.current_tile_pos
+	var diff = tile_pos - mobster_pos
+	return abs(diff.x) <= 1 and abs(diff.y) <= 1 and (diff.x != 0 or diff.y != 0)
+
+func is_tile_owned(tile_pos: Vector2i) -> bool:
+	return tile_pos in owned_tiles
+
+func _on_mobster_clicked(mobster: Mobster):
+	print("Mobster clicked!")
+
+func _on_mobster_movement_finished(mobster: Mobster, new_tile_pos: Vector2i):
+	print("Mobster moved to: ", new_tile_pos)
 
 func center_camera_on_hq():
 	var camera = get_node("Camera2D")
