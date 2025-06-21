@@ -1,11 +1,48 @@
 extends Node2D
 
-const TILE_SIZE = 32
 const GRID_WIDTH = 7
 const GRID_HEIGHT = 7
 
+# Tile type constants
+enum TileType { EMPTY, HQ, STORE }
+
+var tilemap: TileMap
+var tile_set: TileSet
+var colored_tiles: Dictionary = {}  # For player-owned tiles
+
 func _ready():
+	create_tileset()
+	create_tilemap()
 	create_tile_grid()
+	add_colored_tiles()
+
+func create_tileset():
+	tile_set = TileSet.new()
+	tile_set.tile_size = Vector2i(32, 32)
+	
+	# Create atlas sources for each tile type
+	var empty_source = TileSetAtlasSource.new()
+	empty_source.texture = load("res://assets/tiles/tile_empty.png")
+	empty_source.texture_region_size = Vector2i(32, 32)
+	empty_source.create_tile(Vector2i(0, 0))
+	tile_set.add_source(empty_source, TileType.EMPTY)
+	
+	var hq_source = TileSetAtlasSource.new()
+	hq_source.texture = load("res://assets/tiles/hq_base.png")
+	hq_source.texture_region_size = Vector2i(32, 32)
+	hq_source.create_tile(Vector2i(0, 0))
+	tile_set.add_source(hq_source, TileType.HQ)
+	
+	var store_source = TileSetAtlasSource.new()
+	store_source.texture = load("res://assets/tiles/store_generic.png")
+	store_source.texture_region_size = Vector2i(32, 32)
+	store_source.create_tile(Vector2i(0, 0))
+	tile_set.add_source(store_source, TileType.STORE)
+
+func create_tilemap():
+	tilemap = TileMap.new()
+	tilemap.tile_set = tile_set
+	add_child(tilemap)
 
 func create_tile_grid():
 	var center_x = GRID_WIDTH / 2
@@ -13,31 +50,48 @@ func create_tile_grid():
 	
 	for x in range(GRID_WIDTH):
 		for y in range(GRID_HEIGHT):
-			var tile_sprite = Sprite2D.new()
+			var cell_pos = Vector2i(x, y)
 			
-			# Position the tile
-			tile_sprite.position = Vector2(x * TILE_SIZE, y * TILE_SIZE)
-			
-			# Determine tile type and texture
+			# Determine tile type
 			if x == center_x and y == center_y:
 				# HQ tile in center
-				tile_sprite.texture = load("res://assets/tiles/hq_base.png")
-				tile_sprite.modulate = Color.RED  # Tint red for player
+				tilemap.set_cell(0, cell_pos, TileType.HQ, Vector2i(0, 0))
 			elif (x == center_x - 1 and y == center_y) or (x == center_x + 1 and y == center_y) or (x == center_x and y == center_y - 1) or (x == center_x and y == center_y + 1):
 				# Store tiles adjacent to HQ
-				tile_sprite.texture = load("res://assets/tiles/store_generic.png")
-				# Tint one store tile red (the one to the right of HQ)
-				if x == center_x + 1 and y == center_y:
-					tile_sprite.modulate = Color.RED
+				tilemap.set_cell(0, cell_pos, TileType.STORE, Vector2i(0, 0))
+			elif (x + y) % 3 == 0:  # Mix in some empty tiles
+				# Empty tiles scattered throughout
+				tilemap.set_cell(0, cell_pos, TileType.EMPTY, Vector2i(0, 0))
 			else:
 				# Store tiles everywhere else
-				tile_sprite.texture = load("res://assets/tiles/store_generic.png")
-			
-			add_child(tile_sprite)
+				tilemap.set_cell(0, cell_pos, TileType.STORE, Vector2i(0, 0))
 
-# Center the camera on the grid
-func _process(_delta):
-	if get_viewport():
-		var camera = get_viewport().get_camera_2d()
-		if camera:
-			camera.global_position = Vector2(GRID_WIDTH * TILE_SIZE / 2, GRID_HEIGHT * TILE_SIZE / 2)
+func add_colored_tiles():
+	var center_x = GRID_WIDTH / 2
+	var center_y = GRID_HEIGHT / 2
+	
+	# Add red-tinted HQ
+	create_colored_tile(Vector2i(center_x, center_y), TileType.HQ, Color.RED)
+	
+	# Add red-tinted store to the right of HQ
+	create_colored_tile(Vector2i(center_x + 1, center_y), TileType.STORE, Color.RED)
+
+func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
+	var sprite = Sprite2D.new()
+	
+	# Set texture based on tile type
+	match tile_type:
+		TileType.HQ:
+			sprite.texture = load("res://assets/tiles/hq_base.png")
+		TileType.STORE:
+			sprite.texture = load("res://assets/tiles/store_generic.png")
+		TileType.EMPTY:
+			sprite.texture = load("res://assets/tiles/tile_empty.png")
+	
+	# Position and color the sprite
+	sprite.position = tilemap.map_to_local(cell_pos)
+	sprite.modulate = color
+	sprite.z_index = 1  # Above the tilemap
+	
+	add_child(sprite)
+	colored_tiles[cell_pos] = sprite
