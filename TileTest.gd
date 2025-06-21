@@ -1,7 +1,7 @@
 extends Node2D
 
-const GRID_WIDTH = 7
-const GRID_HEIGHT = 7
+const GRID_WIDTH = 32
+const GRID_HEIGHT = 32
 
 # Tile type constants
 enum TileType { EMPTY, HQ, STORE }
@@ -15,6 +15,7 @@ func _ready():
 	create_tilemap()
 	create_tile_grid()
 	add_colored_tiles()
+	center_camera_on_hq()
 
 func create_tileset():
 	tile_set = TileSet.new()
@@ -95,3 +96,11 @@ func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 	
 	add_child(sprite)
 	colored_tiles[cell_pos] = sprite
+
+func center_camera_on_hq():
+	var camera = get_node("Camera2D")
+	if camera:
+		var center_x = GRID_WIDTH / 2
+		var center_y = GRID_HEIGHT / 2
+		var hq_world_pos = tilemap.map_to_local(Vector2i(center_x, center_y))
+		camera.global_position = hq_world_pos
