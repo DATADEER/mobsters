@@ -1,4 +1,4 @@
-extends Sprite2D
+extends Area2D
 class_name Mobster
 
 enum PlayerColor { RED, BLUE, GREEN, YELLOW }
@@ -10,37 +10,37 @@ var player_colors = {
 	PlayerColor.YELLOW: Color.YELLOW
 }
 
-var current_tile_pos: Vector2i
-var player_color: PlayerColor = PlayerColor.RED
-var move_speed: float = 200.0
+@export var current_tile_pos: Vector2i
+@export var player_color: PlayerColor = PlayerColor.RED
+@export var move_speed: float = 200.0
 var is_moving: bool = false
 var target_position: Vector2
 var path: Array[Vector2i] = []
 var current_path_index: int = 0
 
+@onready var sprite: Sprite2D = $Sprite2D
+
 signal mobster_clicked(mobster: Mobster)
 signal movement_finished(mobster: Mobster, new_tile_pos: Vector2i)
 
 func _ready():
-	texture = load("res://assets/units/mobster.png")
 	modulate = player_colors[player_color]
-	z_index = 2  # Above tiles and other units
+	z_index = 2
 
 func _process(delta):
 	if is_moving:
 		move_towards_target(delta)
 
-func _input(event):
+func _on_input_event(viewport, event, shape_idx):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			var mouse_pos = get_global_mouse_position()
-			var sprite_rect = Rect2(global_position - texture.get_size() * scale / 2, texture.get_size() * scale)
-			if sprite_rect.has_point(mouse_pos):
-				mobster_clicked.emit(self)
+			mobster_clicked.emit(self)
 
 func set_player_color(color: PlayerColor):
 	player_color = color
 	modulate = player_colors[color]
+	if sprite:
+		sprite.modulate = player_colors[color]
 
 func set_tile_position(tile_pos: Vector2i, world_pos: Vector2):
 	current_tile_pos = tile_pos

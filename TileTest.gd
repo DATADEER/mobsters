@@ -105,7 +105,8 @@ func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 	colored_tiles[cell_pos] = sprite
 
 func create_player_mobster():
-	player_mobster = Mobster.new()
+	var mobster_scene = preload("res://Mobster.tscn")
+	player_mobster = mobster_scene.instantiate()
 	var center_x = GRID_WIDTH / 2
 	var center_y = GRID_HEIGHT / 2
 	var hq_pos = Vector2i(center_x, center_y)
