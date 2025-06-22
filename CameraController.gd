@@ -1,7 +1,7 @@
 extends Camera2D
 
 const TILE_SIZE = 32
-const EDGE_SCROLL_MARGIN = 50  # Pixels from edge to start scrolling
+const EDGE_SCROLL_MARGIN = 5  # Pixels from edge to start scrolling
 const SCROLL_SPEED = 600  # Pixels per second
 const ZOOM_SPEED = 0.1
 const DEFAULT_TILES_VISIBLE = 25  # Tiles visible by default (5x5)

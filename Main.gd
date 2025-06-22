@@ -20,6 +20,16 @@ var capture_duration: float = 10.0
 var capturable_indicators: Dictionary = {}  # Vector2i -> Sprite2D for visual feedback
 var capture_progress_indicators: Dictionary = {}  # Vector2i -> Sprite2D for capture progress
 
+# Money system
+var money: int = 100
+var money_per_store_per_cycle: int = 10
+var income_cycle_duration: float = 30.0
+var income_timer: float = 0.0
+
+# UI elements
+var money_label: Label
+var money_container: Control
+
 func _ready():
 	create_tileset()
 	create_tilemap()
@@ -29,11 +39,13 @@ func _ready():
 	create_player_mobster()
 	center_camera_on_hq()
 	update_capturable_visual_feedback()
+	create_money_ui()
 
 func _process(delta):
 	update_capturing_stores(delta)
 	update_capture_progress_visuals()
 	check_capture_interruptions()
+	update_income_timer(delta)
 
 func create_tileset():
 	tile_set = TileSet.new()
@@ -320,3 +332,71 @@ func interrupt_store_capture(store_pos: Vector2i):
 	capturing_stores.erase(store_pos)
 	remove_capture_progress_indicator(store_pos)
 	update_capturable_visual_feedback()
+
+func update_income_timer(delta):
+	income_timer += delta
+	if income_timer >= income_cycle_duration:
+		generate_income()
+		income_timer = 0.0
+
+func generate_income():
+	var owned_stores = get_owned_stores()
+	var income = owned_stores.size() * money_per_store_per_cycle
+	money += income
+	update_money_display()
+	print("Generated income: ", income, " from ", owned_stores.size(), " stores. Total money: ", money)
+
+func get_owned_stores() -> Array[Vector2i]:
+	var owned_stores: Array[Vector2i] = []
+	for store_pos in store_states.keys():
+		if store_states[store_pos] == StoreState.OWNED:
+			owned_stores.append(store_pos)
+	return owned_stores
+
+func get_income_per_cycle() -> int:
+	return get_owned_stores().size() * money_per_store_per_cycle
+
+func create_money_ui():
+	var canvas_layer = CanvasLayer.new()
+	add_child(canvas_layer)
+	
+	money_container = Control.new()
+	money_container.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	money_container.position = Vector2(20, 20)
+	money_container.size = Vector2(200, 50)
+	money_container.mouse_entered.connect(_on_money_hover_enter)
+	money_container.mouse_exited.connect(_on_money_hover_exit)
+	canvas_layer.add_child(money_container)
+	
+	money_label = Label.new()
+	money_label.text = "Money: $" + str(money)
+	money_label.add_theme_font_size_override("font_size", 18)
+	money_label.add_theme_color_override("font_color", Color.WHITE)
+	money_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+	money_label.add_theme_constant_override("shadow_offset_x", 2)
+	money_label.add_theme_constant_override("shadow_offset_y", 2)
+	money_container.add_child(money_label)
+
+func update_money_display():
+	if money_label:
+		money_label.text = "Money: $" + str(money)
+
+var tooltip_label: Label = null
+
+func _on_money_hover_enter():
+	if tooltip_label == null:
+		tooltip_label = Label.new()
+		tooltip_label.add_theme_font_size_override("font_size", 14)
+		tooltip_label.add_theme_color_override("font_color", Color.YELLOW)
+		tooltip_label.add_theme_color_override("font_shadow_color", Color.BLACK)
+		tooltip_label.add_theme_constant_override("shadow_offset_x", 1)
+		tooltip_label.add_theme_constant_override("shadow_offset_y", 1)
+		tooltip_label.position = Vector2(0, 25)
+		money_container.add_child(tooltip_label)
+	
+	tooltip_label.text = "Earning $" + str(get_income_per_cycle()) + " per cycle"
+
+func _on_money_hover_exit():
+	if tooltip_label:
+		tooltip_label.queue_free()
+		tooltip_label = null
