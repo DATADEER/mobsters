@@ -6,7 +6,7 @@
 - `store_generic.png` - Business tiles that can be captured
 - `mobster.png` - Player character (24x24, bigger square)
 - `henchman.png` - Unit sprite (16x16, small square)
-- `tile_borders.png` - Adjacency highlights
+- `tile_adjacent.png` - Adjacency highlights
 - `fog_overlay.png` - Fog of war overlay
 
 ## Runtime Tinting Guidelines
