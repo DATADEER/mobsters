@@ -26,9 +26,18 @@ var money_per_store_per_cycle: int = 10
 var income_cycle_duration: float = 30.0
 var income_timer: float = 0.0
 
+# Store upgrade system
+var store_upgrade_levels: Dictionary = {}  # Vector2i -> int (1-5)
+const MAX_UPGRADE_LEVEL: int = 5
+const BASE_UPGRADE_COST: int = 50
+var upgrade_cost_multiplier: float = 2.0
+var upgrade_income_multiplier: float = 1.5
+
 # UI elements
 var money_label: Label
 var money_container: Control
+var upgrade_ui_panel: Control
+var store_upgrade_indicators: Dictionary = {}  # Vector2i -> Label for upgrade level display
 
 func _ready():
 	create_tileset()
@@ -76,18 +85,18 @@ func create_tilemap():
 	add_child(tilemap)
 
 func create_tile_grid():
-	var center_x = GRID_WIDTH / 2
-	var center_y = GRID_HEIGHT / 2
+	var center_x = GRID_WIDTH / 2.0
+	var center_y = GRID_HEIGHT / 2.0
 	
 	for x in range(GRID_WIDTH):
 		for y in range(GRID_HEIGHT):
 			var cell_pos = Vector2i(x, y)
 			
 			# Determine tile type
-			if x == center_x and y == center_y:
+			if x == int(center_x) and y == int(center_y):
 				# HQ tile in center
 				tilemap.set_cell(0, cell_pos, TileType.HQ, Vector2i(0, 0))
-			elif (x == center_x - 1 and y == center_y) or (x == center_x + 1 and y == center_y) or (x == center_x and y == center_y - 1) or (x == center_x and y == center_y + 1):
+			elif (x == int(center_x) - 1 and y == int(center_y)) or (x == int(center_x) + 1 and y == int(center_y)) or (x == int(center_x) and y == int(center_y) - 1) or (x == int(center_x) and y == int(center_y) + 1):
 				# Store tiles adjacent to HQ
 				tilemap.set_cell(0, cell_pos, TileType.STORE, Vector2i(0, 0))
 			elif (x + y) % 3 == 0:  # Mix in some empty tiles
@@ -98,11 +107,11 @@ func create_tile_grid():
 				tilemap.set_cell(0, cell_pos, TileType.STORE, Vector2i(0, 0))
 
 func add_colored_tiles():
-	var center_x = GRID_WIDTH / 2
-	var center_y = GRID_HEIGHT / 2
+	var center_x = GRID_WIDTH / 2.0
+	var center_y = GRID_HEIGHT / 2.0
 	
 	# Add red-tinted HQ
-	var hq_pos = Vector2i(center_x, center_y)
+	var hq_pos = Vector2i(int(center_x), int(center_y))
 	create_colored_tile(hq_pos, TileType.HQ, Color.RED)
 	owned_tiles.append(hq_pos)
 
@@ -129,9 +138,9 @@ func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 func create_player_mobster():
 	var mobster_scene = preload("res://Mobster.tscn")
 	player_mobster = mobster_scene.instantiate()
-	var center_x = GRID_WIDTH / 2
-	var center_y = GRID_HEIGHT / 2
-	var hq_pos = Vector2i(center_x, center_y)
+	var center_x = GRID_WIDTH / 2.0
+	var center_y = GRID_HEIGHT / 2.0
+	var hq_pos = Vector2i(int(center_x), int(center_y))
 	var hq_world_pos = tilemap.map_to_local(hq_pos)
 	
 	player_mobster.tilemap_ref = tilemap
@@ -163,6 +172,11 @@ func handle_tile_click(screen_pos: Vector2):
 	print("Is owned: ", is_tile_owned(tile_pos))
 	print("Is capturable: ", is_store_capturable(tile_pos))
 	
+	# Check if clicking on an owned store to show upgrade UI
+	if is_tile_owned(tile_pos) and get_tile_type_at(tile_pos) == TileType.STORE:
+		show_upgrade_ui(tile_pos)
+		return
+	
 	# Check if mobster is on a capturable store and try to capture
 	if mobster_pos == tile_pos and is_store_capturable(tile_pos):
 		start_store_capture(tile_pos)
@@ -180,18 +194,18 @@ func is_adjacent_to_mobster(tile_pos: Vector2i) -> bool:
 func is_tile_owned(tile_pos: Vector2i) -> bool:
 	return tile_pos in owned_tiles
 
-func _on_mobster_clicked(mobster: Mobster):
+func _on_mobster_clicked(_mobster: Mobster):
 	print("Mobster clicked!")
 
-func _on_mobster_movement_finished(mobster: Mobster, new_tile_pos: Vector2i):
+func _on_mobster_movement_finished(_mobster: Mobster, new_tile_pos: Vector2i):
 	print("Mobster moved to: ", new_tile_pos)
 
 func center_camera_on_hq():
 	var camera = get_node("Camera2D")
 	if camera:
-		var center_x = GRID_WIDTH / 2
-		var center_y = GRID_HEIGHT / 2
-		var hq_world_pos = tilemap.map_to_local(Vector2i(center_x, center_y))
+		var center_x = GRID_WIDTH / 2.0
+		var center_y = GRID_HEIGHT / 2.0
+		var hq_world_pos = tilemap.map_to_local(Vector2i(int(center_x), int(center_y)))
 		camera.global_position = hq_world_pos
 
 func initialize_store_states():
@@ -203,12 +217,12 @@ func initialize_store_states():
 				store_states[cell_pos] = StoreState.NEUTRAL
 
 func get_tile_type_at(cell_pos: Vector2i) -> TileType:
-	var center_x = GRID_WIDTH / 2
-	var center_y = GRID_HEIGHT / 2
+	var center_x = GRID_WIDTH / 2.0
+	var center_y = GRID_HEIGHT / 2.0
 	
-	if cell_pos.x == center_x and cell_pos.y == center_y:
+	if cell_pos.x == int(center_x) and cell_pos.y == int(center_y):
 		return TileType.HQ
-	elif (cell_pos.x == center_x - 1 and cell_pos.y == center_y) or (cell_pos.x == center_x + 1 and cell_pos.y == center_y) or (cell_pos.x == center_x and cell_pos.y == center_y - 1) or (cell_pos.x == center_x and cell_pos.y == center_y + 1):
+	elif (cell_pos.x == int(center_x) - 1 and cell_pos.y == int(center_y)) or (cell_pos.x == int(center_x) + 1 and cell_pos.y == int(center_y)) or (cell_pos.x == int(center_x) and cell_pos.y == int(center_y) - 1) or (cell_pos.x == int(center_x) and cell_pos.y == int(center_y) + 1):
 		return TileType.STORE
 	elif (cell_pos.x + cell_pos.y) % 3 == 0:
 		return TileType.EMPTY
@@ -242,6 +256,8 @@ func complete_store_capture(store_pos: Vector2i):
 	store_states[store_pos] = StoreState.OWNED
 	owned_tiles.append(store_pos)
 	create_colored_tile(store_pos, TileType.STORE, Color.RED)
+	store_upgrade_levels[store_pos] = 1  # Initialize with level 1
+	create_upgrade_level_indicator(store_pos, 1)
 	print("Store captured at: ", store_pos)
 	update_capturable_visual_feedback()
 	remove_capture_progress_indicator(store_pos)
@@ -341,10 +357,16 @@ func update_income_timer(delta):
 
 func generate_income():
 	var owned_stores = get_owned_stores()
-	var income = owned_stores.size() * money_per_store_per_cycle
-	money += income
+	var total_income = 0
+	
+	for store_pos in owned_stores:
+		var store_level = store_upgrade_levels.get(store_pos, 1)
+		var store_income = get_store_income(store_level)
+		total_income += store_income
+	
+	money += total_income
 	update_money_display()
-	print("Generated income: ", income, " from ", owned_stores.size(), " stores. Total money: ", money)
+	print("Generated income: $", total_income, " from ", owned_stores.size(), " stores. Total money: $", money)
 
 func get_owned_stores() -> Array[Vector2i]:
 	var owned_stores: Array[Vector2i] = []
@@ -354,7 +376,15 @@ func get_owned_stores() -> Array[Vector2i]:
 	return owned_stores
 
 func get_income_per_cycle() -> int:
-	return get_owned_stores().size() * money_per_store_per_cycle
+	var owned_stores = get_owned_stores()
+	var total_income = 0
+	
+	for store_pos in owned_stores:
+		var store_level = store_upgrade_levels.get(store_pos, 1)
+		var store_income = get_store_income(store_level)
+		total_income += store_income
+	
+	return total_income
 
 func create_money_ui():
 	var canvas_layer = CanvasLayer.new()
@@ -376,6 +406,8 @@ func create_money_ui():
 	money_label.add_theme_constant_override("shadow_offset_x", 2)
 	money_label.add_theme_constant_override("shadow_offset_y", 2)
 	money_container.add_child(money_label)
+	
+	create_upgrade_ui(canvas_layer)
 
 func update_money_display():
 	if money_label:
@@ -400,3 +432,139 @@ func _on_money_hover_exit():
 	if tooltip_label:
 		tooltip_label.queue_free()
 		tooltip_label = null
+
+func create_upgrade_ui(canvas_layer: CanvasLayer):
+	upgrade_ui_panel = Control.new()
+	upgrade_ui_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	upgrade_ui_panel.size = Vector2(300, 200)
+	upgrade_ui_panel.position = Vector2(-150, -100)
+	upgrade_ui_panel.visible = false
+	canvas_layer.add_child(upgrade_ui_panel)
+	
+	# Background panel
+	var background = Panel.new()
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.add_theme_color_override("bg_color", Color(0.2, 0.2, 0.2, 0.9))
+	upgrade_ui_panel.add_child(background)
+	
+	# Title label
+	var title_label = Label.new()
+	title_label.text = "Store Upgrade"
+	title_label.add_theme_font_size_override("font_size", 20)
+	title_label.add_theme_color_override("font_color", Color.WHITE)
+	title_label.position = Vector2(20, 20)
+	upgrade_ui_panel.add_child(title_label)
+	
+	# Info label
+	var info_label = Label.new()
+	info_label.name = "InfoLabel"
+	info_label.add_theme_font_size_override("font_size", 14)
+	info_label.add_theme_color_override("font_color", Color.LIGHT_GRAY)
+	info_label.position = Vector2(20, 50)
+	info_label.size = Vector2(260, 60)
+	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	upgrade_ui_panel.add_child(info_label)
+	
+	# Upgrade button
+	var upgrade_button = Button.new()
+	upgrade_button.name = "UpgradeButton"
+	upgrade_button.text = "UPGRADE"
+	upgrade_button.position = Vector2(20, 120)
+	upgrade_button.size = Vector2(120, 40)
+	upgrade_button.add_theme_font_size_override("font_size", 16)
+	upgrade_button.pressed.connect(_on_upgrade_button_pressed)
+	upgrade_ui_panel.add_child(upgrade_button)
+	
+	# Close button
+	var close_button = Button.new()
+	close_button.text = "CLOSE"
+	close_button.position = Vector2(160, 120)
+	close_button.size = Vector2(120, 40)
+	close_button.add_theme_font_size_override("font_size", 16)
+	close_button.pressed.connect(_on_close_upgrade_ui)
+	upgrade_ui_panel.add_child(close_button)
+
+var current_upgrade_store_pos: Vector2i
+
+func show_upgrade_ui(store_pos: Vector2i):
+	current_upgrade_store_pos = store_pos
+	var current_level = store_upgrade_levels.get(store_pos, 1)
+	var upgrade_cost = get_upgrade_cost(current_level)
+	var current_income = get_store_income(current_level)
+	var next_income = get_store_income(current_level + 1)
+	
+	var info_label = upgrade_ui_panel.get_node("InfoLabel")
+	var upgrade_button = upgrade_ui_panel.get_node("UpgradeButton")
+	
+	if current_level >= MAX_UPGRADE_LEVEL:
+		info_label.text = "Store Level: " + str(current_level) + " (MAX)\nIncome: $" + str(current_income) + " per cycle\n\nThis store is fully upgraded!"
+		upgrade_button.disabled = true
+		upgrade_button.text = "MAX LEVEL"
+	else:
+		info_label.text = "Store Level: " + str(current_level) + "\nCurrent Income: $" + str(current_income) + " per cycle\nNext Level Income: $" + str(next_income) + " per cycle\n\nUpgrade Cost: $" + str(upgrade_cost)
+		upgrade_button.disabled = money < upgrade_cost
+		upgrade_button.text = "UPGRADE ($" + str(upgrade_cost) + ")"
+	
+	upgrade_ui_panel.visible = true
+
+func _on_upgrade_button_pressed():
+	upgrade_store(current_upgrade_store_pos)
+	_on_close_upgrade_ui()
+
+func _on_close_upgrade_ui():
+	upgrade_ui_panel.visible = false
+
+func get_upgrade_cost(current_level: int) -> int:
+	return int(BASE_UPGRADE_COST * pow(upgrade_cost_multiplier, current_level - 1))
+
+func get_store_income(level: int) -> int:
+	return int(money_per_store_per_cycle * pow(upgrade_income_multiplier, level - 1))
+
+func create_upgrade_level_indicator(store_pos: Vector2i, level: int):
+	var indicator = Label.new()
+	indicator.text = str(level)
+	indicator.add_theme_font_size_override("font_size", 12)
+	indicator.add_theme_color_override("font_color", Color.YELLOW)
+	indicator.add_theme_color_override("font_shadow_color", Color.BLACK)
+	indicator.add_theme_constant_override("shadow_offset_x", 1)
+	indicator.add_theme_constant_override("shadow_offset_y", 1)
+	
+	var store_world_pos = tilemap.map_to_local(store_pos)
+	indicator.position = store_world_pos + Vector2(10, -20)  # Top-right corner of tile
+	indicator.z_index = 3
+	
+	add_child(indicator)
+	store_upgrade_indicators[store_pos] = indicator
+
+func update_upgrade_level_indicator(store_pos: Vector2i, new_level: int):
+	if store_pos in store_upgrade_indicators:
+		store_upgrade_indicators[store_pos].text = str(new_level)
+
+func remove_upgrade_level_indicator(store_pos: Vector2i):
+	if store_pos in store_upgrade_indicators:
+		store_upgrade_indicators[store_pos].queue_free()
+		store_upgrade_indicators.erase(store_pos)
+
+func upgrade_store(store_pos: Vector2i) -> bool:
+	var current_level = store_upgrade_levels.get(store_pos, 1)
+	
+	if current_level >= MAX_UPGRADE_LEVEL:
+		print("Store already at max level: ", current_level)
+		return false
+	
+	var upgrade_cost = get_upgrade_cost(current_level)
+	if money < upgrade_cost:
+		print("Not enough money for upgrade. Need: ", upgrade_cost, " Have: ", money)
+		return false
+	
+	# Perform upgrade
+	money -= upgrade_cost
+	var new_level = current_level + 1
+	store_upgrade_levels[store_pos] = new_level
+	
+	# Update visuals
+	update_upgrade_level_indicator(store_pos, new_level)
+	update_money_display()
+	
+	print("Store upgraded to level ", new_level, " at position ", store_pos, " for $", upgrade_cost)
+	return true
