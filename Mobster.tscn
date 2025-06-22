@@ -1,7 +1,7 @@
-[gd_scene load_steps=3 format=3 uid="uid://bvkm7y8x1qpv7"]
+[gd_scene load_steps=4 format=3 uid="uid://bvkm7y8x1qpv7"]
 
-[ext_resource type="Script" path="res://Mobster.gd" id="1_0hdqx"]
-[ext_resource type="Texture2D" path="res://assets/units/mobster.png" id="2_3fgjk"]
+[ext_resource type="Script" uid="uid://u52of3pk11pl" path="res://Mobster.gd" id="1_0hdqx"]
+[ext_resource type="Texture2D" uid="uid://dsjj5ykw0i8lo" path="res://assets/units/mobster.png" id="2_3fgjk"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1xp2q"]
 size = Vector2(32, 32)
