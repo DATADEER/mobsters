@@ -154,9 +154,11 @@ func create_player_mobster():
 func _unhandled_input(event):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			handle_tile_click(event.global_position)
+			handle_tile_left_click(event.global_position)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			handle_tile_right_click(event.global_position)
 
-func handle_tile_click(screen_pos: Vector2):
+func handle_tile_left_click(screen_pos: Vector2):
 	# Convert screen position to world position using camera
 	var camera = get_node("Camera2D")
 	var world_pos = screen_pos
@@ -164,25 +166,25 @@ func handle_tile_click(screen_pos: Vector2):
 		world_pos = camera.get_global_mouse_position()
 	
 	var tile_pos = tilemap.local_to_map(world_pos)
-	var mobster_pos = player_mobster.current_tile_pos
 	
-	print("Clicked tile: ", tile_pos)
-	print("Mobster position: ", mobster_pos)
-	print("Is adjacent: ", is_adjacent_to_mobster(tile_pos))
+	print("Left-clicked tile: ", tile_pos)
 	print("Is owned: ", is_tile_owned(tile_pos))
-	print("Is capturable: ", is_store_capturable(tile_pos))
 	
 	# Check if clicking on an owned store to show upgrade UI
 	if is_tile_owned(tile_pos) and get_tile_type_at(tile_pos) == TileType.STORE:
 		show_upgrade_ui(tile_pos)
 		return
+
+func handle_tile_right_click(screen_pos: Vector2):
+	# Convert screen position to world position using camera
+	var camera = get_node("Camera2D")
+	var world_pos = screen_pos
+	if camera:
+		world_pos = camera.get_global_mouse_position()
 	
-	# Check if mobster is on a capturable store and try to capture
-	if mobster_pos == tile_pos and is_store_capturable(tile_pos):
-		start_store_capture(tile_pos)
-		return
+	var tile_pos = tilemap.local_to_map(world_pos)
 	
-	# Otherwise, move mobster to clicked tile
+	print("Right-clicked tile: ", tile_pos)
 	print("Moving mobster to: ", tile_pos)
 	player_mobster.move_to_tile(tile_pos, tilemap, GRID_WIDTH, GRID_HEIGHT)
 
@@ -199,6 +201,11 @@ func _on_mobster_clicked(_mobster: Mobster):
 
 func _on_mobster_movement_finished(_mobster: Mobster, new_tile_pos: Vector2i):
 	print("Mobster moved to: ", new_tile_pos)
+	
+	# Auto-start capture if mobster moved onto a capturable store
+	if is_store_capturable(new_tile_pos):
+		print("Auto-starting capture of store at: ", new_tile_pos)
+		start_store_capture(new_tile_pos)
 
 func center_camera_on_hq():
 	var camera = get_node("Camera2D")
@@ -206,6 +213,9 @@ func center_camera_on_hq():
 		var center_x = GRID_WIDTH / 2.0
 		var center_y = GRID_HEIGHT / 2.0
 		var hq_world_pos = tilemap.map_to_local(Vector2i(int(center_x), int(center_y)))
+		
+		# Set up camera bounds before positioning
+		camera.set_tilemap_bounds(GRID_WIDTH, GRID_HEIGHT, tilemap)
 		camera.global_position = hq_world_pos
 
 func initialize_store_states():
@@ -391,12 +401,20 @@ func create_money_ui():
 	add_child(canvas_layer)
 	
 	money_container = Control.new()
-	money_container.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	money_container.position = Vector2(20, 20)
-	money_container.size = Vector2(200, 50)
+	money_container.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	money_container.offset_bottom = 50  # Set height to 50px
 	money_container.mouse_entered.connect(_on_money_hover_enter)
 	money_container.mouse_exited.connect(_on_money_hover_exit)
 	canvas_layer.add_child(money_container)
+	
+	# Add solid background to money container
+	var money_bg = Panel.new()
+	money_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var money_style_box = StyleBoxFlat.new()
+	money_style_box.bg_color = Color(0.1, 0.1, 0.1, 1.0)  # Solid dark gray
+	money_bg.add_theme_stylebox_override("panel", money_style_box)
+	money_bg.z_index = -1
+	money_container.add_child(money_bg)
 	
 	money_label = Label.new()
 	money_label.text = "Money: $" + str(money)
@@ -405,6 +423,7 @@ func create_money_ui():
 	money_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 	money_label.add_theme_constant_override("shadow_offset_x", 2)
 	money_label.add_theme_constant_override("shadow_offset_y", 2)
+	money_label.position = Vector2(20, 15)  # Position within the header
 	money_container.add_child(money_label)
 	
 	create_upgrade_ui(canvas_layer)
@@ -423,7 +442,7 @@ func _on_money_hover_enter():
 		tooltip_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 		tooltip_label.add_theme_constant_override("shadow_offset_x", 1)
 		tooltip_label.add_theme_constant_override("shadow_offset_y", 1)
-		tooltip_label.position = Vector2(0, 25)
+		tooltip_label.position = Vector2(20, 30)
 		money_container.add_child(tooltip_label)
 	
 	tooltip_label.text = "Earning $" + str(get_income_per_cycle()) + " per cycle"
@@ -441,10 +460,18 @@ func create_upgrade_ui(canvas_layer: CanvasLayer):
 	upgrade_ui_panel.visible = false
 	canvas_layer.add_child(upgrade_ui_panel)
 	
-	# Background panel
+	# Background panel with border
 	var background = Panel.new()
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	background.add_theme_color_override("bg_color", Color(0.2, 0.2, 0.2, 0.9))
+	background.add_theme_color_override("bg_color", Color.BLACK)
+	var style_box = StyleBoxFlat.new()
+	style_box.bg_color = Color.BLACK
+	style_box.border_width_left = 2
+	style_box.border_width_right = 2
+	style_box.border_width_top = 2
+	style_box.border_width_bottom = 2
+	style_box.border_color = Color.WHITE
+	background.add_theme_stylebox_override("panel", style_box)
 	upgrade_ui_panel.add_child(background)
 	
 	# Title label
