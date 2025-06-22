@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://epi2wwd0hkyw"]
 
-[ext_resource type="Script" path="res://TileTest.gd" id="1"]
+[ext_resource type="Script" path="res://Main.gd" id="1"]
 [ext_resource type="Script" uid="uid://buyc7mkte0u13" path="res://CameraController.gd" id="2"]
 
 [node name="TileTest" type="Node2D"]
