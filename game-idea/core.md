@@ -1,4 +1,6 @@
-- you start at the center of the screen with your base as a single tile
+- the game has up to 4 players. whenever we say "you", it related to player 1. But all of these rules are true for all players
+- all remaining players are controlled by the computer
+- you with your single base tile 
 - your mobster inhabits the base tile. he is a very strong unit. But if your mobster dies you loose the game.
 - there are other tiles around you, each representing a business one can capture. you can only capture stores that are adjacent to your own stores or your base
 - all the tiles around directly adjacent to your own tile are visible but grayed out, which indicates they don't yet belong to anyone
