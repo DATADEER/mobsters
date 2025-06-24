@@ -353,12 +353,6 @@ func initialize_store_states():
 				store_states[cell_pos] = StoreState.NEUTRAL
 
 func get_tile_type_at(cell_pos: Vector2i) -> TileType:
-	# Check if position is an HQ
-	var hq_positions = get_hq_positions()
-	for hq_pos in hq_positions:
-		if cell_pos == hq_pos:
-			return TileType.HQ
-	
 	# Use tilemap to determine actual tile type
 	var tile_source_id = tilemap.get_cell_source_id(0, cell_pos)
 	if tile_source_id == TileType.HQ:
