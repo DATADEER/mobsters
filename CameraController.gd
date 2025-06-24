@@ -16,6 +16,9 @@ var min_zoom: float
 var max_zoom: float
 var default_zoom: float
 
+# Edge scrolling toggle
+var edge_scrolling_enabled: bool = true
+
 func _ready():
 	calculate_zoom_levels()
 	zoom = Vector2(default_zoom, default_zoom)
@@ -32,7 +35,8 @@ func calculate_zoom_levels():
 	max_zoom = smaller_dimension / (sqrt(MIN_TILES_VISIBLE) * TILE_SIZE)
 
 func _process(delta):
-	handle_edge_scrolling(delta)
+	if edge_scrolling_enabled:
+		handle_edge_scrolling(delta)
 
 func _input(event):
 	if event is InputEventMouseButton:
@@ -118,3 +122,6 @@ func clamp_camera_position(target_pos: Vector2) -> Vector2:
 		clamp(target_pos.x, min_x, max_x),
 		clamp(target_pos.y, min_y, max_y)
 	)
+
+func toggle_edge_scrolling():
+	edge_scrolling_enabled = !edge_scrolling_enabled

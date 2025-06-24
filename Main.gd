@@ -9,18 +9,32 @@ enum TileType { EMPTY, HQ, STORE }
 # Store state constants
 enum StoreState { NEUTRAL, OWNED, CAPTURING }
 
+# Player constants
+enum PlayerID { PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4 }
+
+# Seed system
+var map_seed: int = 0
+var rng: RandomNumberGenerator
+
 var tilemap: TileMap
 var tile_set: TileSet
 var colored_tiles: Dictionary = {}  # For player-owned tiles
-var player_mobster: Mobster
-var owned_tiles: Array[Vector2i] = []  # Tiles owned by player
+
+# Player system
+var players: Array[Dictionary] = []
+var player_mobsters: Array[Mobster] = []
+var player_mobster: Mobster  # Legacy reference to Player 1's mobster for compatibility
+var player_colors: Array[Color] = [Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW]
+var player_owned_tiles: Dictionary = {}  # PlayerID -> Array[Vector2i]
+var player_money: Dictionary = {}  # PlayerID -> int
+
 var store_states: Dictionary = {}  # Vector2i -> StoreState
 var capturing_stores: Dictionary = {}  # Vector2i -> capture_timer
 var capture_duration: float = 10.0
 var capturable_indicators: Dictionary = {}  # Vector2i -> Sprite2D for visual feedback
 var capture_progress_indicators: Dictionary = {}  # Vector2i -> Sprite2D for capture progress
 
-# Money system
+# Money system (legacy - kept for compatibility, will use player_money)
 var money: int = 100
 var money_per_store_per_cycle: int = 10
 var income_cycle_duration: float = 30.0
@@ -28,7 +42,7 @@ var income_timer: float = 0.0
 
 # Store upgrade system
 var store_upgrade_levels: Dictionary = {}  # Vector2i -> int (1-5)
-const MAX_UPGRADE_LEVEL: int = 5
+const MAX_UPGRADE_LEVEL: int  = 5
 const BASE_UPGRADE_COST: int = 50
 var upgrade_cost_multiplier: float = 2.0
 var upgrade_income_multiplier: float = 1.5
@@ -39,13 +53,20 @@ var money_container: Control
 var upgrade_ui_panel: Control
 var store_upgrade_indicators: Dictionary = {}  # Vector2i -> Label for upgrade level display
 
+# Debug coordinate display
+var coordinate_labels: Dictionary = {}  # Vector2i -> Label for coordinate display
+var coordinates_visible: bool = false
+
+
 func _ready():
+	setup_seed()
+	initialize_players()
 	create_tileset()
 	create_tilemap()
 	create_tile_grid()
 	initialize_store_states()
 	add_colored_tiles()
-	create_player_mobster()
+	create_all_mobsters()
 	center_camera_on_hq()
 	update_capturable_visual_feedback()
 	create_money_ui()
@@ -55,6 +76,34 @@ func _process(delta):
 	update_capture_progress_visuals()
 	check_capture_interruptions()
 	update_income_timer(delta)
+
+func setup_seed(seed_value: int = 0):
+	if seed_value == 0:
+		map_seed = randi()
+	else:
+		map_seed = seed_value
+	
+	rng = RandomNumberGenerator.new()
+	rng.seed = map_seed
+	print("Map seed: ", map_seed)
+
+func initialize_players():
+	# Initialize player data structures
+	for i in range(4):
+		var player_id = PlayerID.values()[i]
+		player_owned_tiles[player_id] = []
+		player_money[player_id] = 100
+	
+	# Set Player 1's money to legacy money variable for compatibility
+	money = player_money[PlayerID.PLAYER_1]
+
+func get_hq_positions() -> Array[Vector2i]:
+	return [
+		Vector2i(8, 8),   # Player 1 - top-left quadrant
+		Vector2i(24, 8),  # Player 2 - top-right quadrant
+		Vector2i(8, 24),  # Player 3 - bottom-left quadrant
+		Vector2i(24, 24)  # Player 4 - bottom-right quadrant
+	]
 
 func create_tileset():
 	tile_set = TileSet.new()
@@ -85,35 +134,96 @@ func create_tilemap():
 	add_child(tilemap)
 
 func create_tile_grid():
-	var center_x = GRID_WIDTH / 2.0
-	var center_y = GRID_HEIGHT / 2.0
+	var occupied_positions: Dictionary = {}
+	var hq_positions = get_hq_positions()
 	
+	# 1. Place 4 HQs in quadrants
+	for i in range(4):
+		var hq_pos = hq_positions[i]
+		tilemap.set_cell(0, hq_pos, TileType.HQ, Vector2i(0, 0))
+		occupied_positions[hq_pos] = true
+	
+	# 2. Ensure each HQ has at least 2 adjacent stores
+	for hq_pos in hq_positions:
+		ensure_hq_adjacent_stores(hq_pos, occupied_positions)
+	
+	# 3. Fill remaining tiles with procedural generation
+	fill_remaining_tiles_procedurally(occupied_positions)
+	
+	# 4. Validate connectivity
+	ensure_store_connectivity()
+
+func ensure_hq_adjacent_stores(hq_pos: Vector2i, occupied_positions: Dictionary):
+	var adjacent_positions = get_orthogonal_neighbors(hq_pos)
+	
+	# Place stores at ALL adjacent positions for proper gameplay
+	for adj_pos in adjacent_positions:
+		if is_valid_position(adj_pos) and not occupied_positions.has(adj_pos):
+			tilemap.set_cell(0, adj_pos, TileType.STORE, Vector2i(0, 0))
+			occupied_positions[adj_pos] = true
+
+func fill_remaining_tiles_procedurally(occupied_positions: Dictionary):
 	for x in range(GRID_WIDTH):
 		for y in range(GRID_HEIGHT):
-			var cell_pos = Vector2i(x, y)
+			var pos = Vector2i(x, y)
+			if not occupied_positions.has(pos):
+				# 70% stores, 30% empty (seeded)
+				if rng.randf() < 0.7:
+					tilemap.set_cell(0, pos, TileType.STORE, Vector2i(0, 0))
+				else:
+					tilemap.set_cell(0, pos, TileType.EMPTY, Vector2i(0, 0))
+
+func get_orthogonal_neighbors(pos: Vector2i) -> Array[Vector2i]:
+	return [
+		Vector2i(pos.x - 1, pos.y),  # Left
+		Vector2i(pos.x + 1, pos.y),  # Right
+		Vector2i(pos.x, pos.y - 1),  # Up
+		Vector2i(pos.x, pos.y + 1)   # Down
+	]
+
+func is_valid_position(pos: Vector2i) -> bool:
+	return pos.x >= 0 and pos.x < GRID_WIDTH and pos.y >= 0 and pos.y < GRID_HEIGHT
+
+func ensure_store_connectivity():
+	# Validate each store has at least 1 orthogonal neighbor
+	for x in range(GRID_WIDTH):
+		for y in range(GRID_HEIGHT):
+			var pos = Vector2i(x, y)
+			var tile_type = tilemap.get_cell_source_id(0, pos)
 			
-			# Determine tile type
-			if x == int(center_x) and y == int(center_y):
-				# HQ tile in center
-				tilemap.set_cell(0, cell_pos, TileType.HQ, Vector2i(0, 0))
-			elif (x == int(center_x) - 1 and y == int(center_y)) or (x == int(center_x) + 1 and y == int(center_y)) or (x == int(center_x) and y == int(center_y) - 1) or (x == int(center_x) and y == int(center_y) + 1):
-				# Store tiles adjacent to HQ
-				tilemap.set_cell(0, cell_pos, TileType.STORE, Vector2i(0, 0))
-			elif (x + y) % 3 == 0:  # Mix in some empty tiles
-				# Empty tiles scattered throughout
-				tilemap.set_cell(0, cell_pos, TileType.EMPTY, Vector2i(0, 0))
-			else:
-				# Store tiles everywhere else
-				tilemap.set_cell(0, cell_pos, TileType.STORE, Vector2i(0, 0))
+			if tile_type == TileType.STORE:
+				var has_neighbor = false
+				for neighbor_pos in get_orthogonal_neighbors(pos):
+					if is_valid_position(neighbor_pos):
+						var neighbor_type = tilemap.get_cell_source_id(0, neighbor_pos)
+						if neighbor_type == TileType.STORE or neighbor_type == TileType.HQ:
+							has_neighbor = true
+							break
+				
+				# If isolated, convert a nearby empty tile to store
+				if not has_neighbor:
+					fix_isolated_store(pos)
+
+func fix_isolated_store(store_pos: Vector2i):
+	# Find a nearby empty tile and convert it to store
+	for neighbor_pos in get_orthogonal_neighbors(store_pos):
+		if is_valid_position(neighbor_pos):
+			var neighbor_type = tilemap.get_cell_source_id(0, neighbor_pos)
+			if neighbor_type == TileType.EMPTY:
+				tilemap.set_cell(0, neighbor_pos, TileType.STORE, Vector2i(0, 0))
+				break
 
 func add_colored_tiles():
-	var center_x = GRID_WIDTH / 2.0
-	var center_y = GRID_HEIGHT / 2.0
+	var hq_positions = get_hq_positions()
 	
-	# Add red-tinted HQ
-	var hq_pos = Vector2i(int(center_x), int(center_y))
-	create_colored_tile(hq_pos, TileType.HQ, Color.RED)
-	owned_tiles.append(hq_pos)
+	# Add colored HQs for all 4 players
+	for i in range(4):
+		var player_id = PlayerID.values()[i]
+		var hq_pos = hq_positions[i]
+		var color = player_colors[i]
+		
+		create_colored_tile(hq_pos, TileType.HQ, color)
+		player_owned_tiles[player_id].append(hq_pos)
 
 func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 	var sprite = Sprite2D.new()
@@ -135,21 +245,37 @@ func create_colored_tile(cell_pos: Vector2i, tile_type: TileType, color: Color):
 	add_child(sprite)
 	colored_tiles[cell_pos] = sprite
 
-func create_player_mobster():
+func create_all_mobsters():
 	var mobster_scene = preload("res://Mobster.tscn")
-	player_mobster = mobster_scene.instantiate()
-	var center_x = GRID_WIDTH / 2.0
-	var center_y = GRID_HEIGHT / 2.0
-	var hq_pos = Vector2i(int(center_x), int(center_y))
-	var hq_world_pos = tilemap.map_to_local(hq_pos)
+	var hq_positions = get_hq_positions()
+	var mobster_colors = [
+		Mobster.PlayerColor.RED,
+		Mobster.PlayerColor.BLUE, 
+		Mobster.PlayerColor.GREEN,
+		Mobster.PlayerColor.YELLOW
+	]
 	
-	player_mobster.tilemap_ref = tilemap
-	player_mobster.set_tile_position(hq_pos, hq_world_pos)
-	player_mobster.set_player_color(Mobster.PlayerColor.RED)
-	player_mobster.mobster_clicked.connect(_on_mobster_clicked)
-	player_mobster.movement_finished.connect(_on_mobster_movement_finished)
+	player_mobsters.resize(4)
 	
-	add_child(player_mobster)
+	for i in range(4):
+		var mobster = mobster_scene.instantiate()
+		var hq_pos = hq_positions[i]
+		var hq_world_pos = tilemap.map_to_local(hq_pos)
+		
+		mobster.tilemap_ref = tilemap
+		mobster.set_tile_position(hq_pos, hq_world_pos)
+		mobster.set_player_color(mobster_colors[i])
+		
+		# Only Player 1 (index 0) gets input handling
+		if i == 0:
+			mobster.mobster_clicked.connect(_on_mobster_clicked)
+			mobster.movement_finished.connect(_on_mobster_movement_finished)
+		
+		add_child(mobster)
+		player_mobsters[i] = mobster
+	
+	# Keep legacy reference to Player 1's mobster for compatibility
+	player_mobster = player_mobsters[0]
 
 func _unhandled_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -194,7 +320,7 @@ func is_adjacent_to_mobster(tile_pos: Vector2i) -> bool:
 	return abs(diff.x) <= 1 and abs(diff.y) <= 1 and (diff.x != 0 or diff.y != 0)
 
 func is_tile_owned(tile_pos: Vector2i) -> bool:
-	return tile_pos in owned_tiles
+	return tile_pos in player_owned_tiles[PlayerID.PLAYER_1]
 
 func _on_mobster_clicked(_mobster: Mobster):
 	print("Mobster clicked!")
@@ -210,9 +336,9 @@ func _on_mobster_movement_finished(_mobster: Mobster, new_tile_pos: Vector2i):
 func center_camera_on_hq():
 	var camera = get_node("Camera2D")
 	if camera:
-		var center_x = GRID_WIDTH / 2.0
-		var center_y = GRID_HEIGHT / 2.0
-		var hq_world_pos = tilemap.map_to_local(Vector2i(int(center_x), int(center_y)))
+		# Center camera on Player 1's HQ
+		var player1_hq_pos = get_hq_positions()[0]  # Player 1's HQ at (8, 8)
+		var hq_world_pos = tilemap.map_to_local(player1_hq_pos)
 		
 		# Set up camera bounds before positioning
 		camera.set_tilemap_bounds(GRID_WIDTH, GRID_HEIGHT, tilemap)
@@ -264,7 +390,7 @@ func start_store_capture(store_pos: Vector2i):
 
 func complete_store_capture(store_pos: Vector2i):
 	store_states[store_pos] = StoreState.OWNED
-	owned_tiles.append(store_pos)
+	player_owned_tiles[PlayerID.PLAYER_1].append(store_pos)
 	create_colored_tile(store_pos, TileType.STORE, Color.RED)
 	store_upgrade_levels[store_pos] = 1  # Initialize with level 1
 	create_upgrade_level_indicator(store_pos, 1)
@@ -289,11 +415,28 @@ func is_adjacent_to_owned_territory(store_pos: Vector2i) -> bool:
 		Vector2i(-1, 0), Vector2i(1, 0)
 	]
 	
+	# Only log for tiles around Player 1's HQ (8,8)
+	var player1_hq = Vector2i(8, 8)
+	var is_around_hq = abs(store_pos.x - player1_hq.x) <= 1 and abs(store_pos.y - player1_hq.y) <= 1
+	
+	if is_around_hq:
+		print("=== CHECKING ADJACENCY FOR STORE: ", store_pos, " ===")
+		print("Player owned tiles: ", player_owned_tiles[PlayerID.PLAYER_1])
+	
 	for direction in directions:
 		var adjacent_pos = store_pos + direction
-		if adjacent_pos in owned_tiles:
+		if is_around_hq:
+			print("  Checking adjacent position: ", adjacent_pos)
+		if adjacent_pos in player_owned_tiles[PlayerID.PLAYER_1]:
+			if is_around_hq:
+				print("    -> FOUND MATCH! Store is adjacent to owned territory")
 			return true
+		else:
+			if is_around_hq:
+				print("    -> Not owned")
 	
+	if is_around_hq:
+		print("  -> NO ADJACENT OWNED TERRITORY FOUND")
 	return false
 
 func update_capturable_visual_feedback():
@@ -384,6 +527,7 @@ func get_owned_stores() -> Array[Vector2i]:
 		if store_states[store_pos] == StoreState.OWNED:
 			owned_stores.append(store_pos)
 	return owned_stores
+
 
 func get_income_per_cycle() -> int:
 	var owned_stores = get_owned_stores()
@@ -595,3 +739,37 @@ func upgrade_store(store_pos: Vector2i) -> bool:
 	
 	print("Store upgraded to level ", new_level, " at position ", store_pos, " for $", upgrade_cost)
 	return true
+
+func toggle_coordinate_display():
+	coordinates_visible = !coordinates_visible
+	
+	if coordinates_visible:
+		create_coordinate_labels()
+	else:
+		clear_coordinate_labels()
+
+func create_coordinate_labels():
+	# Create labels directly in the scene
+	for x in range(GRID_WIDTH):
+		for y in range(GRID_HEIGHT):
+			var pos = Vector2i(x, y)
+			var label = Label.new()
+			label.text = str(pos.x) + "," + str(pos.y)
+			label.add_theme_font_size_override("font_size", 10)
+			label.add_theme_color_override("font_color", Color.CYAN)
+			label.add_theme_color_override("font_shadow_color", Color.BLACK)
+			label.add_theme_constant_override("shadow_offset_x", 1)
+			label.add_theme_constant_override("shadow_offset_y", 1)
+			
+			# Position label at tile center in world coordinates
+			var world_pos = tilemap.map_to_local(pos)
+			label.position = world_pos - Vector2(12, 8)  # Offset to center text on tile
+			label.z_index = 100  # High z-index to be on top
+			
+			add_child(label)
+			coordinate_labels[pos] = label
+
+func clear_coordinate_labels():
+	for label in coordinate_labels.values():
+		label.queue_free()
+	coordinate_labels.clear()

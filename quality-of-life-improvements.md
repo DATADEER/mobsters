@@ -1,0 +1,1 @@
+* [] if the players mobster is no longer visible in the current viewport, then an arrow should indicate the corner of the window I need to pan to, to get back to my mobster 
