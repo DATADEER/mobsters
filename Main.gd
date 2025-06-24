@@ -353,17 +353,22 @@ func initialize_store_states():
 				store_states[cell_pos] = StoreState.NEUTRAL
 
 func get_tile_type_at(cell_pos: Vector2i) -> TileType:
-	var center_x = GRID_WIDTH / 2.0
-	var center_y = GRID_HEIGHT / 2.0
+	# Check if position is an HQ
+	var hq_positions = get_hq_positions()
+	for hq_pos in hq_positions:
+		if cell_pos == hq_pos:
+			return TileType.HQ
 	
-	if cell_pos.x == int(center_x) and cell_pos.y == int(center_y):
+	# Use tilemap to determine actual tile type
+	var tile_source_id = tilemap.get_cell_source_id(0, cell_pos)
+	if tile_source_id == TileType.HQ:
 		return TileType.HQ
-	elif (cell_pos.x == int(center_x) - 1 and cell_pos.y == int(center_y)) or (cell_pos.x == int(center_x) + 1 and cell_pos.y == int(center_y)) or (cell_pos.x == int(center_x) and cell_pos.y == int(center_y) - 1) or (cell_pos.x == int(center_x) and cell_pos.y == int(center_y) + 1):
+	elif tile_source_id == TileType.STORE:
 		return TileType.STORE
-	elif (cell_pos.x + cell_pos.y) % 3 == 0:
+	elif tile_source_id == TileType.EMPTY:
 		return TileType.EMPTY
 	else:
-		return TileType.STORE
+		return TileType.EMPTY  # Default fallback
 
 func update_capturing_stores(delta):
 	for store_pos in capturing_stores.keys():
@@ -415,28 +420,11 @@ func is_adjacent_to_owned_territory(store_pos: Vector2i) -> bool:
 		Vector2i(-1, 0), Vector2i(1, 0)
 	]
 	
-	# Only log for tiles around Player 1's HQ (8,8)
-	var player1_hq = Vector2i(8, 8)
-	var is_around_hq = abs(store_pos.x - player1_hq.x) <= 1 and abs(store_pos.y - player1_hq.y) <= 1
-	
-	if is_around_hq:
-		print("=== CHECKING ADJACENCY FOR STORE: ", store_pos, " ===")
-		print("Player owned tiles: ", player_owned_tiles[PlayerID.PLAYER_1])
-	
 	for direction in directions:
 		var adjacent_pos = store_pos + direction
-		if is_around_hq:
-			print("  Checking adjacent position: ", adjacent_pos)
 		if adjacent_pos in player_owned_tiles[PlayerID.PLAYER_1]:
-			if is_around_hq:
-				print("    -> FOUND MATCH! Store is adjacent to owned territory")
 			return true
-		else:
-			if is_around_hq:
-				print("    -> Not owned")
 	
-	if is_around_hq:
-		print("  -> NO ADJACENT OWNED TERRITORY FOUND")
 	return false
 
 func update_capturable_visual_feedback():
