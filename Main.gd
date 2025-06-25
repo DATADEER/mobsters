@@ -21,9 +21,7 @@ var tile_set: TileSet
 var colored_tiles: Dictionary = {}  # For player-owned tiles
 
 # Player system
-var players: Array[Dictionary] = []
 var player_mobsters: Array[Mobster] = []
-var player_mobster: Mobster  # Legacy reference to Player 1's mobster for compatibility
 var player_colors: Array[Color] = [Color.RED, Color.BLUE, Color.GREEN, Color.YELLOW]
 var player_owned_tiles: Dictionary = {}  # PlayerID -> Array[Vector2i]
 var player_money: Dictionary = {}  # PlayerID -> int
@@ -34,8 +32,6 @@ var capture_duration: float = 10.0
 var capturable_indicators: Dictionary = {}  # Vector2i -> Sprite2D for visual feedback
 var capture_progress_indicators: Dictionary = {}  # Vector2i -> Sprite2D for capture progress
 
-# Money system (legacy - kept for compatibility, will use player_money)
-var money: int = 100
 var money_per_store_per_cycle: int = 10
 var income_cycle_duration: float = 30.0
 var income_timer: float = 0.0
@@ -85,7 +81,6 @@ func setup_seed(seed_value: int = 0):
 	
 	rng = RandomNumberGenerator.new()
 	rng.seed = map_seed
-	print("Map seed: ", map_seed)
 
 func initialize_players():
 	# Initialize player data structures
@@ -94,8 +89,6 @@ func initialize_players():
 		player_owned_tiles[player_id] = []
 		player_money[player_id] = 100
 	
-	# Set Player 1's money to legacy money variable for compatibility
-	money = player_money[PlayerID.PLAYER_1]
 
 func get_hq_positions() -> Array[Vector2i]:
 	return [
@@ -268,14 +261,11 @@ func create_all_mobsters():
 		
 		# Only Player 1 (index 0) gets input handling
 		if i == 0:
-			mobster.mobster_clicked.connect(_on_mobster_clicked)
 			mobster.movement_finished.connect(_on_mobster_movement_finished)
 		
 		add_child(mobster)
 		player_mobsters[i] = mobster
 	
-	# Keep legacy reference to Player 1's mobster for compatibility
-	player_mobster = player_mobsters[0]
 
 func _unhandled_input(event):
 	if event is InputEventMouseButton and event.pressed:
@@ -293,8 +283,6 @@ func handle_tile_left_click(screen_pos: Vector2):
 	
 	var tile_pos = tilemap.local_to_map(world_pos)
 	
-	print("Left-clicked tile: ", tile_pos)
-	print("Is owned: ", is_tile_owned(tile_pos))
 	
 	# Check if clicking on an owned store to show upgrade UI
 	if is_tile_owned(tile_pos) and get_tile_type_at(tile_pos) == TileType.STORE:
@@ -310,27 +298,21 @@ func handle_tile_right_click(screen_pos: Vector2):
 	
 	var tile_pos = tilemap.local_to_map(world_pos)
 	
-	print("Right-clicked tile: ", tile_pos)
-	print("Moving mobster to: ", tile_pos)
-	player_mobster.move_to_tile(tile_pos, tilemap, GRID_WIDTH, GRID_HEIGHT)
+	player_mobsters[0].move_to_tile(tile_pos, tilemap, GRID_WIDTH, GRID_HEIGHT)
 
 func is_adjacent_to_mobster(tile_pos: Vector2i) -> bool:
-	var mobster_pos = player_mobster.current_tile_pos
+	var mobster_pos = player_mobsters[0].current_tile_pos
 	var diff = tile_pos - mobster_pos
 	return abs(diff.x) <= 1 and abs(diff.y) <= 1 and (diff.x != 0 or diff.y != 0)
 
 func is_tile_owned(tile_pos: Vector2i) -> bool:
 	return tile_pos in player_owned_tiles[PlayerID.PLAYER_1]
 
-func _on_mobster_clicked(_mobster: Mobster):
-	print("Mobster clicked!")
 
 func _on_mobster_movement_finished(_mobster: Mobster, new_tile_pos: Vector2i):
-	print("Mobster moved to: ", new_tile_pos)
 	
 	# Auto-start capture if mobster moved onto a capturable store
 	if is_store_capturable(new_tile_pos):
-		print("Auto-starting capture of store at: ", new_tile_pos)
 		start_store_capture(new_tile_pos)
 
 func center_camera_on_hq():
@@ -373,16 +355,13 @@ func update_capturing_stores(delta):
 
 func start_store_capture(store_pos: Vector2i):
 	if not is_store_capturable(store_pos):
-		print("Store not capturable: ", store_pos)
 		return false
 	
-	if player_mobster.current_tile_pos != store_pos:
-		print("Mobster must be on store to capture it")
+	if player_mobsters[0].current_tile_pos != store_pos:
 		return false
 	
 	store_states[store_pos] = StoreState.CAPTURING
 	capturing_stores[store_pos] = capture_duration
-	print("Starting capture of store at: ", store_pos, " (", capture_duration, " seconds)")
 	update_capturable_visual_feedback()
 	create_capture_progress_indicator(store_pos)
 	return true
@@ -393,7 +372,6 @@ func complete_store_capture(store_pos: Vector2i):
 	create_colored_tile(store_pos, TileType.STORE, Color.RED)
 	store_upgrade_levels[store_pos] = 1  # Initialize with level 1
 	create_upgrade_level_indicator(store_pos, 1)
-	print("Store captured at: ", store_pos)
 	update_capturable_visual_feedback()
 	remove_capture_progress_indicator(store_pos)
 
@@ -467,7 +445,7 @@ func update_capture_progress_visuals():
 			indicator.scale.x = progress
 
 func check_capture_interruptions():
-	var mobster_pos = player_mobster.current_tile_pos
+	var mobster_pos = player_mobsters[0].current_tile_pos
 	var stores_to_interrupt = []
 	
 	for store_pos in capturing_stores.keys():
@@ -478,7 +456,6 @@ func check_capture_interruptions():
 		interrupt_store_capture(store_pos)
 
 func interrupt_store_capture(store_pos: Vector2i):
-	print("Capture interrupted at: ", store_pos, " - mobster left the store")
 	store_states[store_pos] = StoreState.NEUTRAL
 	capturing_stores.erase(store_pos)
 	remove_capture_progress_indicator(store_pos)
@@ -499,9 +476,8 @@ func generate_income():
 		var store_income = get_store_income(store_level)
 		total_income += store_income
 	
-	money += total_income
+	player_money[PlayerID.PLAYER_1] += total_income
 	update_money_display()
-	print("Generated income: $", total_income, " from ", owned_stores.size(), " stores. Total money: $", money)
 
 func get_owned_stores() -> Array[Vector2i]:
 	var owned_stores: Array[Vector2i] = []
@@ -543,7 +519,7 @@ func create_money_ui():
 	money_container.add_child(money_bg)
 	
 	money_label = Label.new()
-	money_label.text = "Money: $" + str(money)
+	money_label.text = "Money: $" + str(player_money[PlayerID.PLAYER_1])
 	money_label.add_theme_font_size_override("font_size", 18)
 	money_label.add_theme_color_override("font_color", Color.WHITE)
 	money_label.add_theme_color_override("font_shadow_color", Color.BLACK)
@@ -556,7 +532,7 @@ func create_money_ui():
 
 func update_money_display():
 	if money_label:
-		money_label.text = "Money: $" + str(money)
+		money_label.text = "Money: $" + str(player_money[PlayerID.PLAYER_1])
 
 var tooltip_label: Label = null
 
@@ -655,7 +631,7 @@ func show_upgrade_ui(store_pos: Vector2i):
 		upgrade_button.text = "MAX LEVEL"
 	else:
 		info_label.text = "Store Level: " + str(current_level) + "\nCurrent Income: $" + str(current_income) + " per cycle\nNext Level Income: $" + str(next_income) + " per cycle\n\nUpgrade Cost: $" + str(upgrade_cost)
-		upgrade_button.disabled = money < upgrade_cost
+		upgrade_button.disabled = player_money[PlayerID.PLAYER_1] < upgrade_cost
 		upgrade_button.text = "UPGRADE ($" + str(upgrade_cost) + ")"
 	
 	upgrade_ui_panel.visible = true
@@ -702,16 +678,14 @@ func upgrade_store(store_pos: Vector2i) -> bool:
 	var current_level = store_upgrade_levels.get(store_pos, 1)
 	
 	if current_level >= MAX_UPGRADE_LEVEL:
-		print("Store already at max level: ", current_level)
 		return false
 	
 	var upgrade_cost = get_upgrade_cost(current_level)
-	if money < upgrade_cost:
-		print("Not enough money for upgrade. Need: ", upgrade_cost, " Have: ", money)
+	if player_money[PlayerID.PLAYER_1] < upgrade_cost:
 		return false
 	
 	# Perform upgrade
-	money -= upgrade_cost
+	player_money[PlayerID.PLAYER_1] -= upgrade_cost
 	var new_level = current_level + 1
 	store_upgrade_levels[store_pos] = new_level
 	
@@ -719,7 +693,6 @@ func upgrade_store(store_pos: Vector2i) -> bool:
 	update_upgrade_level_indicator(store_pos, new_level)
 	update_money_display()
 	
-	print("Store upgraded to level ", new_level, " at position ", store_pos, " for $", upgrade_cost)
 	return true
 
 func toggle_coordinate_display():
