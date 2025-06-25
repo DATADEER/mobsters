@@ -4,7 +4,7 @@ const GRID_WIDTH = 32
 const GRID_HEIGHT = 32
 
 # Tile type constants
-enum TileType { EMPTY, HQ, STORE }
+enum TileType { EMPTY, HQ, STORE, STORE_DISCONNECTED }
 
 # Store state constants
 enum StoreState { NEUTRAL, OWNED, CAPTURING }
@@ -43,6 +43,11 @@ const BASE_UPGRADE_COST: int = 50
 var upgrade_cost_multiplier: float = 2.0
 var upgrade_income_multiplier: float = 1.5
 
+# Store connectivity system
+var store_connectivity: Dictionary = {}  # Vector2i -> bool (connected to HQ)
+var connectivity_dirty: Dictionary = {}   # PlayerID -> bool (needs recalc)
+var disconnected_store_sprites: Dictionary = {}  # PlayerID -> Dictionary[Vector2i -> Sprite2D] for disconnected visuals
+
 # UI elements
 var money_label: Label
 var money_container: Control
@@ -66,12 +71,14 @@ func _ready():
 	center_camera_on_hq()
 	update_capturable_visual_feedback()
 	create_money_ui()
+	update_all_connectivity()
 
 func _process(delta):
 	update_capturing_stores(delta)
 	update_capture_progress_visuals()
 	check_capture_interruptions()
 	update_income_timer(delta)
+	update_all_connectivity()
 
 func setup_seed(seed_value: int = 0):
 	if seed_value == 0:
@@ -88,6 +95,8 @@ func initialize_players():
 		var player_id = PlayerID.values()[i]
 		player_owned_tiles[player_id] = []
 		player_money[player_id] = 100
+		connectivity_dirty[player_id] = true
+		disconnected_store_sprites[player_id] = {}
 	
 
 func get_hq_positions() -> Array[Vector2i]:
@@ -120,6 +129,12 @@ func create_tileset():
 	store_source.texture_region_size = Vector2i(32, 32)
 	store_source.create_tile(Vector2i(0, 0))
 	tile_set.add_source(store_source, TileType.STORE)
+	
+	var store_disconnected_source = TileSetAtlasSource.new()
+	store_disconnected_source.texture = load("res://assets/tiles/store_generic_disconnected.png")
+	store_disconnected_source.texture_region_size = Vector2i(32, 32)
+	store_disconnected_source.create_tile(Vector2i(0, 0))
+	tile_set.add_source(store_disconnected_source, TileType.STORE_DISCONNECTED)
 
 func create_tilemap():
 	tilemap = TileMap.new()
@@ -374,6 +389,8 @@ func complete_store_capture(store_pos: Vector2i):
 	create_upgrade_level_indicator(store_pos, 1)
 	update_capturable_visual_feedback()
 	remove_capture_progress_indicator(store_pos)
+	# Territory changed, mark connectivity as dirty
+	mark_connectivity_dirty(PlayerID.PLAYER_1)
 
 func is_store_capturable(store_pos: Vector2i) -> bool:
 	var tile_type = get_tile_type_at(store_pos)
@@ -468,13 +485,18 @@ func update_income_timer(delta):
 		income_timer = 0.0
 
 func generate_income():
-	var owned_stores = get_owned_stores()
+	# Update connectivity before generating income
+	update_all_connectivity()
+	
+	var owned_stores = get_owned_stores_for_player(PlayerID.PLAYER_1)
 	var total_income = 0
 	
 	for store_pos in owned_stores:
-		var store_level = store_upgrade_levels.get(store_pos, 1)
-		var store_income = get_store_income(store_level)
-		total_income += store_income
+		# Only generate income if store is connected to HQ
+		if store_connectivity.get(store_pos, false):
+			var store_level = store_upgrade_levels.get(store_pos, 1)
+			var store_income = get_store_income(store_level)
+			total_income += store_income
 	
 	player_money[PlayerID.PLAYER_1] += total_income
 	update_money_display()
@@ -486,15 +508,27 @@ func get_owned_stores() -> Array[Vector2i]:
 			owned_stores.append(store_pos)
 	return owned_stores
 
+func get_owned_stores_for_player(player_id: PlayerID) -> Array[Vector2i]:
+	var owned_stores: Array[Vector2i] = []
+	var owned_tiles = player_owned_tiles[player_id]
+	
+	for store_pos in owned_tiles:
+		if get_tile_type_at(store_pos) == TileType.STORE:
+			owned_stores.append(store_pos)
+	
+	return owned_stores
+
 
 func get_income_per_cycle() -> int:
-	var owned_stores = get_owned_stores()
+	var owned_stores = get_owned_stores_for_player(PlayerID.PLAYER_1)
 	var total_income = 0
 	
 	for store_pos in owned_stores:
-		var store_level = store_upgrade_levels.get(store_pos, 1)
-		var store_income = get_store_income(store_level)
-		total_income += store_income
+		# Only count income if store is connected to HQ
+		if store_connectivity.get(store_pos, false):
+			var store_level = store_upgrade_levels.get(store_pos, 1)
+			var store_income = get_store_income(store_level)
+			total_income += store_income
 	
 	return total_income
 
@@ -728,3 +762,88 @@ func clear_coordinate_labels():
 	for label in coordinate_labels.values():
 		label.queue_free()
 	coordinate_labels.clear()
+
+# Store connectivity system
+func update_all_connectivity():
+	for player_id in PlayerID.values():
+		if connectivity_dirty.get(player_id, false):
+			update_player_connectivity(player_id)
+			connectivity_dirty[player_id] = false
+
+func update_player_connectivity(player_id: PlayerID):
+	var hq_positions = get_hq_positions()
+	var hq_pos = hq_positions[player_id]
+	var owned_tiles = player_owned_tiles[player_id]
+	
+	# Clear previous connectivity state for this player's stores
+	for store_pos in owned_tiles:
+		if get_tile_type_at(store_pos) == TileType.STORE:
+			store_connectivity[store_pos] = false
+	
+	# Flood fill from HQ through owned stores
+	var connected_tiles: Dictionary = {}
+	var queue: Array[Vector2i] = [hq_pos]
+	connected_tiles[hq_pos] = true
+	
+	while queue.size() > 0:
+		var current_pos = queue.pop_front()
+		
+		for neighbor_pos in get_orthogonal_neighbors(current_pos):
+			if is_valid_position(neighbor_pos) and not connected_tiles.has(neighbor_pos):
+				# Check if neighbor is owned by this player
+				if neighbor_pos in owned_tiles:
+					connected_tiles[neighbor_pos] = true
+					queue.append(neighbor_pos)
+					
+					# If it's a store, mark as connected
+					if get_tile_type_at(neighbor_pos) == TileType.STORE:
+						store_connectivity[neighbor_pos] = true
+	
+	# Update visual feedback for disconnected stores
+	update_disconnected_store_visuals(player_id)
+
+func update_disconnected_store_visuals(player_id: PlayerID):
+	var owned_tiles = player_owned_tiles[player_id]
+	var player_disconnected_sprites = disconnected_store_sprites[player_id]
+	
+	# First, clean up any disconnected visuals for stores no longer owned by this player
+	var positions_to_remove = []
+	for store_pos in player_disconnected_sprites.keys():
+		if store_pos not in owned_tiles:
+			positions_to_remove.append(store_pos)
+	
+	for store_pos in positions_to_remove:
+		player_disconnected_sprites[store_pos].queue_free()
+		player_disconnected_sprites.erase(store_pos)
+	
+	# Now update visuals for currently owned stores
+	for store_pos in owned_tiles:
+		if get_tile_type_at(store_pos) == TileType.STORE:
+			var store_connected = store_connectivity.get(store_pos, false)
+			
+			if store_connected:
+				# Remove disconnected visual if it exists
+				if store_pos in player_disconnected_sprites:
+					player_disconnected_sprites[store_pos].queue_free()
+					player_disconnected_sprites.erase(store_pos)
+			else:
+				# Add disconnected visual if it doesn't exist
+				if store_pos not in player_disconnected_sprites:
+					create_disconnected_store_visual(store_pos, player_id)
+
+func create_disconnected_store_visual(store_pos: Vector2i, player_id: PlayerID):
+	var disconnected_sprite = Sprite2D.new()
+	disconnected_sprite.texture = load("res://assets/tiles/store_generic_disconnected.png")
+	disconnected_sprite.position = tilemap.map_to_local(store_pos)
+	disconnected_sprite.z_index = 2  # Above colored tiles but below UI
+	
+	# Apply 50% intensity player color tint
+	var player_color = player_colors[player_id]
+	player_color.a = 0.5  # 50% intensity
+	disconnected_sprite.modulate = player_color
+	
+	add_child(disconnected_sprite)
+	disconnected_store_sprites[player_id][store_pos] = disconnected_sprite
+
+func mark_connectivity_dirty(player_id: PlayerID):
+	connectivity_dirty[player_id] = true

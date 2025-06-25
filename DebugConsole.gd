@@ -293,12 +293,15 @@ func capture_tile_for_player(tile_pos: Vector2i, player_id):
 	main_node.store_upgrade_levels[tile_pos] = 1
 	main_node.create_upgrade_level_indicator(tile_pos, 1)
 	main_node.update_capturable_visual_feedback()
+	# Territory changed, mark connectivity as dirty
+	main_node.mark_connectivity_dirty(player_id)
 
 func reassign_store_to_player(tile_pos: Vector2i, player_id):
-	# Remove from previous owner
+	# Remove from previous owner and mark their connectivity as dirty
 	for pid in main_node.PlayerID.values():
 		if tile_pos in main_node.player_owned_tiles[pid]:
 			main_node.player_owned_tiles[pid].erase(tile_pos)
+			main_node.mark_connectivity_dirty(pid)  # Territory changed for this player
 			break
 	
 	# Remove existing visuals
@@ -332,10 +335,11 @@ func downgrade_or_uncapture_store(tile_pos: Vector2i, _player_id):
 		uncapture_store(tile_pos)
 
 func uncapture_store(tile_pos: Vector2i):
-	# Remove from any owner
+	# Remove from any owner and mark their connectivity as dirty
 	for pid in main_node.PlayerID.values():
 		if tile_pos in main_node.player_owned_tiles[pid]:
 			main_node.player_owned_tiles[pid].erase(tile_pos)
+			main_node.mark_connectivity_dirty(pid)  # Territory changed for this player
 			break
 	
 	# Set to neutral state
