@@ -291,7 +291,7 @@ func _unhandled_input(event):
 
 func handle_tile_left_click(screen_pos: Vector2):
 	# Convert screen position to world position using camera
-	var camera = get_node("Camera2D")
+	var camera: CameraController = get_node("Camera2D")
 	var world_pos = screen_pos
 	if camera:
 		world_pos = camera.get_global_mouse_position()
@@ -306,7 +306,7 @@ func handle_tile_left_click(screen_pos: Vector2):
 
 func handle_tile_right_click(screen_pos: Vector2):
 	# Convert screen position to world position using camera
-	var camera = get_node("Camera2D")
+	var camera: CameraController = get_node("Camera2D")
 	var world_pos = screen_pos
 	if camera:
 		world_pos = camera.get_global_mouse_position()
@@ -331,7 +331,7 @@ func _on_mobster_movement_finished(_mobster: Mobster, new_tile_pos: Vector2i):
 		start_store_capture(new_tile_pos)
 
 func center_camera_on_hq():
-	var camera = get_node("Camera2D")
+	var camera: CameraController = get_node("Camera2D")
 	if camera:
 		# Center camera on Player 1's HQ
 		var player1_hq_pos = get_hq_positions()[0]  # Player 1's HQ at (8, 8)
@@ -656,8 +656,8 @@ func show_upgrade_ui(store_pos: Vector2i):
 	var current_income = get_store_income(current_level)
 	var next_income = get_store_income(current_level + 1)
 	
-	var info_label = upgrade_ui_panel.get_node("InfoLabel")
-	var upgrade_button = upgrade_ui_panel.get_node("UpgradeButton")
+	var info_label: Label = upgrade_ui_panel.get_node("InfoLabel")
+	var upgrade_button: Button = upgrade_ui_panel.get_node("UpgradeButton")
 	
 	if current_level >= MAX_UPGRADE_LEVEL:
 		info_label.text = "Store Level: " + str(current_level) + " (MAX)\nIncome: $" + str(current_income) + " per cycle\n\nThis store is fully upgraded!"

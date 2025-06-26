@@ -338,7 +338,7 @@ func handle_paint_mode_click(event: InputEventMouseButton):
 		return
 	
 	# Get tile position from mouse click
-	var camera = main_node.get_node("Camera2D")
+	var camera: CameraController = main_node.get_node("Camera2D")
 	var world_pos = event.global_position
 	if camera:
 		world_pos = camera.get_global_mouse_position()
