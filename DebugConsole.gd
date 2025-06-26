@@ -1,4 +1,5 @@
 extends CanvasLayer
+class_name CameraController
 
 var debug_console: Control
 var console_input: LineEdit
@@ -140,7 +141,7 @@ func _on_console_command_entered(command: String):
 		
 		"pan":
 			if main_node:
-				var camera = main_node.get_node("Camera2D")
+				var camera: CameraController = main_node.get_node("Camera2D")
 				if camera:
 					camera.toggle_edge_scrolling()
 					var status = "enabled" if camera.edge_scrolling_enabled else "disabled"
@@ -181,11 +182,122 @@ func enter_paint_mode(player_num: int):
 	# Create paint mode UI label
 	create_paint_mode_label()
 	
-	# Change cursor to brush
-	var brush_texture = load("res://assets/tools/brush.png")
-	Input.set_custom_mouse_cursor(brush_texture, Input.CURSOR_ARROW, Vector2(8, 8))
+	# Change cursor to colored brush
+	print("DEBUG: Attempting to set colored cursor for player ", player_num)
+	
+	# Try the colored approach first
+	var colored_brush_texture = create_colored_brush_texture(player_num)
+	if colored_brush_texture:
+		print("DEBUG: Setting custom cursor with colored brush texture")
+		# Set cursor with appropriate hotspot for 32x32 size (center or tip of brush)
+		var hotspot = Vector2(16, 16)  # Center of 32x32 cursor
+		Input.set_custom_mouse_cursor(colored_brush_texture, Input.CURSOR_ARROW, hotspot)
+		
+		# Verify cursor was set by checking if we can set it again
+		await get_tree().process_frame
+		print("DEBUG: Custom cursor set successfully")
+	else:
+		print("ERROR: Failed to create colored brush texture, trying alternative approach")
+		# Alternative: Try using the original brush (at least this should work)
+		try_alternative_cursor_approach(player_num)
 	
 	console_log("[color=green]Entered paint mode for Player " + str(player_num) + "[/color]")
+
+func create_colored_brush_texture(player_num: int) -> ImageTexture:
+	print("DEBUG: Creating colored brush texture for player ", player_num)
+	
+	# Load the original brush texture
+	var brush_texture = load("res://assets/tools/brush.png") as Texture2D
+	if not brush_texture:
+		print("ERROR: Failed to load brush texture")
+		return null
+		
+	var brush_image = brush_texture.get_image()
+	if not brush_image:
+		print("ERROR: Failed to get image from brush texture")
+		return null
+	
+	print("DEBUG: Brush image size: ", brush_image.get_width(), "x", brush_image.get_height())
+	print("DEBUG: Brush image format: ", brush_image.get_format())
+	
+	# Get player color from main node
+	var player_color = main_node.player_colors[player_num - 1]
+	print("DEBUG: Player color: ", player_color)
+	
+	# Create a copy of the image to modify
+	var colored_image = brush_image.duplicate()
+	
+	# Ensure image is in RGBA8 format for pixel manipulation
+	if colored_image.get_format() != Image.FORMAT_RGBA8:
+		print("DEBUG: Converting image to RGBA8 format")
+		colored_image.convert(Image.FORMAT_RGBA8)
+	
+	# Resize image to appropriate cursor size (32x32 is standard)
+	var target_size = 32
+	if colored_image.get_width() > target_size or colored_image.get_height() > target_size:
+		print("DEBUG: Resizing cursor from ", colored_image.get_width(), "x", colored_image.get_height(), " to ", target_size, "x", target_size)
+		colored_image.resize(target_size, target_size, Image.INTERPOLATE_LANCZOS)
+	
+	# Apply color modulation to the image
+	var width = colored_image.get_width()
+	var height = colored_image.get_height()
+	
+	for x in range(width):
+		for y in range(height):
+			var pixel = colored_image.get_pixel(x, y)
+			# Only colorize non-transparent pixels
+			if pixel.a > 0:
+				# For better coloring, use a blend approach instead of pure multiplication
+				var new_pixel = Color(
+					pixel.r * player_color.r,
+					pixel.g * player_color.g,
+					pixel.b * player_color.b,
+					pixel.a
+				)
+				colored_image.set_pixel(x, y, new_pixel)
+	
+	# Create ImageTexture from the modified image
+	var image_texture = ImageTexture.new()
+	image_texture.set_image(colored_image)
+	
+	print("DEBUG: Created colored brush ImageTexture successfully")
+	return image_texture
+
+func try_alternative_cursor_approach(player_num: int):
+	print("DEBUG: Trying alternative cursor approach")
+	
+	# Try the original brush first, but resize it too
+	var brush_texture = load("res://assets/tools/brush.png")
+	if brush_texture:
+		print("DEBUG: Setting original brush cursor")
+		
+		# Create a resized version of the original brush
+		var brush_image = brush_texture.get_image()
+		var target_size = 32
+		if brush_image.get_width() > target_size or brush_image.get_height() > target_size:
+			brush_image.resize(target_size, target_size, Image.INTERPOLATE_LANCZOS)
+			var resized_texture = ImageTexture.new()
+			resized_texture.set_image(brush_image)
+			brush_texture = resized_texture
+		
+		var hotspot = Vector2(16, 16)  # Center of 32x32 cursor
+		Input.set_custom_mouse_cursor(brush_texture, Input.CURSOR_ARROW, hotspot)
+		print("DEBUG: Original brush cursor set")
+		
+		# Since we can't color the cursor, update the paint mode label to show player color
+		update_paint_mode_label_with_color(player_num)
+	else:
+		print("ERROR: Could not load original brush texture")
+		# Fall back to a built-in cursor shape
+		print("DEBUG: Falling back to built-in cursor")
+		Input.set_default_cursor_shape(Input.CURSOR_CROSS)
+		update_paint_mode_label_with_color(player_num)
+
+func update_paint_mode_label_with_color(player_num: int):
+	if paint_mode_label and main_node:
+		var player_color = main_node.player_colors[player_num - 1]
+		paint_mode_label.add_theme_color_override("font_color", player_color)
+		paint_mode_label.text = "Paint Mode (Player " + str(player_num) + ") - CURSOR COLOR: " + str(player_color).to_upper() + " - Press ESC to exit"
 
 func exit_paint_mode():
 	paint_mode_active = false
@@ -196,7 +308,9 @@ func exit_paint_mode():
 		paint_mode_label = null
 	
 	# Restore original cursor
+	print("DEBUG: Restoring original cursor")
 	Input.set_custom_mouse_cursor(null)
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
 	
 	console_log("[color=yellow]Exited paint mode[/color]")
 
