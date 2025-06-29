@@ -1,4 +1,5 @@
 extends Camera2D
+class_name CameraController
 
 const TILE_SIZE = 32
 const EDGE_SCROLL_MARGIN = 5  # Pixels from edge to start scrolling
