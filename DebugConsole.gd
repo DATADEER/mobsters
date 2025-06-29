@@ -1,5 +1,4 @@
 extends CanvasLayer
-class_name CameraController
 
 var debug_console: Control
 var console_input: LineEdit
